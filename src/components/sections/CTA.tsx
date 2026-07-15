@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { motion } from "framer-motion";
+import { motion, useScroll, useTransform } from "framer-motion";
 import Hls from "hls.js";
 import { Logo } from "@/components/icons/Logo";
 import { fadeUp } from "@/lib/animations";
@@ -9,6 +9,29 @@ const HLS_URL =
 
 export function CTA() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+
+  // Track scroll progress through the CTA section.
+  // Used to subtly amplify the buttons as the user reaches the bottom —
+  // a quiet, non-aggressive nudge toward action.
+  const { scrollYProgress } = useScroll({
+    target: sectionRef,
+    offset: ["start end", "end center"],
+  });
+
+  // Primary button: 1.0 → 1.04 scale across the section.
+  const primaryScale = useTransform(scrollYProgress, [0, 1], [1, 1.04]);
+  // Secondary (Start Writing): subtle border brighten — 20% → 60% opacity.
+  const secondaryBorder = useTransform(
+    scrollYProgress,
+    [0, 1],
+    ["rgba(255,255,255,0.2)", "rgba(255,255,255,0.6)"]
+  );
+  const secondaryGlow = useTransform(
+    scrollYProgress,
+    [0, 1],
+    ["0 0 0px rgba(255,255,255,0)", "0 0 24px rgba(255,255,255,0.08)"]
+  );
 
   useEffect(() => {
     const video = videoRef.current;
@@ -56,7 +79,10 @@ export function CTA() {
   }, []);
 
   return (
-    <section className="relative overflow-hidden border-t border-border/30 px-6 py-32 md:py-44">
+    <section
+      ref={sectionRef}
+      className="relative overflow-hidden border-t border-border/30 px-6 py-32 md:py-44"
+    >
       {/* Background HLS video */}
       <video
         ref={videoRef}
@@ -96,7 +122,8 @@ export function CTA() {
           className="mt-10 flex flex-col gap-4 sm:flex-row"
         >
           <motion.button
-            whileHover={{ scale: 1.03 }}
+            style={{ scale: primaryScale }}
+            whileHover={{ scale: 1.06 }}
             whileTap={{ scale: 0.98 }}
             transition={{ type: "spring", stiffness: 400, damping: 25 }}
             className="rounded-lg bg-foreground px-8 py-3.5 text-sm font-semibold text-background"
@@ -104,10 +131,14 @@ export function CTA() {
             Subscribe Now
           </motion.button>
           <motion.button
-            whileHover={{ scale: 1.03 }}
+            style={{
+              borderColor: secondaryBorder,
+              boxShadow: secondaryGlow,
+            }}
+            whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.98 }}
             transition={{ type: "spring", stiffness: 400, damping: 25 }}
-            className="liquid-glass rounded-lg px-8 py-3.5 text-sm font-semibold text-foreground"
+            className="liquid-glass rounded-lg border px-8 py-3.5 text-sm font-semibold text-foreground"
           >
             Start Writing
           </motion.button>

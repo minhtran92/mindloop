@@ -5,19 +5,22 @@ import { Mission } from "@/components/sections/Mission";
 import { Solution } from "@/components/sections/Solution";
 import { CTA } from "@/components/sections/CTA";
 import { Footer } from "@/components/sections/Footer";
+import { SmoothScroll } from "@/components/providers/SmoothScroll";
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <Navbar />
-      <main>
-        <Hero />
-        <SearchChanged />
-        <Mission />
-        <Solution />
-        <CTA />
-      </main>
-      <Footer />
-    </div>
+    <SmoothScroll>
+      <div className="min-h-screen bg-background text-foreground">
+        <Navbar />
+        <main>
+          <Hero />
+          <SearchChanged />
+          <Mission />
+          <Solution />
+          <CTA />
+        </main>
+        <Footer />
+      </div>
+    </SmoothScroll>
   );
 }
