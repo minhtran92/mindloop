@@ -1,12 +1,12 @@
 import { motion } from "framer-motion";
-import { fadeUp } from "@/lib/animations";
+import { fadeUpMount } from "@/lib/animations";
 
 const HERO_VIDEO =
   "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260325_120549_0cd82c36-56b3-4dd9-b190-069cfc3a623f.mp4";
 
 export function Hero() {
   return (
-    <section className="relative min-h-screen w-full overflow-hidden">
+    <section id="home" className="relative min-h-screen w-full overflow-hidden">
       {/* Background video */}
       <video
         className="absolute inset-0 h-full w-full object-cover"
@@ -25,7 +25,7 @@ export function Hero() {
       <div className="relative z-10 flex min-h-screen flex-col items-center justify-center px-6 pt-28 md:pt-32 text-center">
         {/* Avatar row */}
         <motion.div
-          {...fadeUp(0.1)}
+          {...fadeUpMount(0.1)}
           className="flex items-center gap-3"
         >
           <div className="flex -space-x-2">
@@ -58,7 +58,7 @@ export function Hero() {
 
         {/* Heading */}
         <motion.h1
-          {...fadeUp(0.2)}
+          {...fadeUpMount(0.2)}
           className="mt-8 text-5xl font-medium tracking-[-2px] md:text-7xl lg:text-8xl"
         >
           Get <span className="font-serif font-normal italic">Inspired</span> with Us
@@ -66,7 +66,7 @@ export function Hero() {
 
         {/* Subtitle */}
         <motion.p
-          {...fadeUp(0.3)}
+          {...fadeUpMount(0.3)}
           className="mt-6 max-w-2xl text-lg leading-relaxed text-[hsl(var(--hero-subtitle))]"
         >
           Join our feed for meaningful updates, news around technology and a
@@ -75,7 +75,7 @@ export function Hero() {
 
         {/* Email form */}
         <motion.form
-          {...fadeUp(0.4)}
+          {...fadeUpMount(0.4)}
           onSubmit={(e) => e.preventDefault()}
           className="liquid-glass mt-10 flex w-full max-w-lg items-center gap-2 rounded-full p-2"
         >

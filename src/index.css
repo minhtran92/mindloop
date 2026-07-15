@@ -51,6 +51,23 @@
   }
 }
 
+/* Respect users who prefer reduced motion — disable smooth scroll,
+   CSS transitions, and animations. Framer Motion animations are also
+   reduced via its own useReducedMotion support in the components. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 @layer components {
   .liquid-glass {
     background: rgba(255, 255, 255, 0.01);

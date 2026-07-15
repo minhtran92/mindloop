@@ -18,6 +18,26 @@ export function CTA() {
 
     if (Hls.isSupported()) {
       hls = new Hls({ enableWorker: true });
+
+      // Graceful error recovery — if the stream fatally fails, destroy Hls
+      // and fall back to a static black background (the overlay already
+      // darkens whatever is underneath, so this is visually seamless).
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (data.fatal) {
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              hls?.startLoad();
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              hls?.recoverMediaError();
+              break;
+            default:
+              hls?.destroy();
+              break;
+          }
+        }
+      });
+
       hls.loadSource(HLS_URL);
       hls.attachMedia(video);
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {

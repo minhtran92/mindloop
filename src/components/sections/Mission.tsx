@@ -92,7 +92,7 @@ export function Mission() {
   });
 
   return (
-    <section ref={ref} className="relative px-6 pt-0 pb-32 md:pb-44">
+    <section ref={ref} id="philosophy" className="relative px-6 pt-0 pb-32 md:pb-44 scroll-mt-20">
       {/* Large square video */}
       <div className="mx-auto mb-24 flex max-w-[800px] justify-center">
         <video

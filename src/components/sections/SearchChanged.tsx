@@ -24,7 +24,7 @@ const PLATFORMS = [
 
 export function SearchChanged() {
   return (
-    <section className="px-6 pt-52 pb-6 md:pt-64 md:pb-9">
+    <section id="how-it-works" className="px-6 pt-52 pb-6 md:pt-64 md:pb-9 scroll-mt-20">
       {/* Heading */}
       <motion.h2
         {...fadeUp(0)}

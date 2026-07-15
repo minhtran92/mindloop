@@ -29,7 +29,7 @@ const FEATURES = [
 
 export function Solution() {
   return (
-    <section className="border-t border-border/30 px-6 py-32 md:py-44">
+    <section id="use-cases" className="border-t border-border/30 px-6 py-32 md:py-44 scroll-mt-20">
       {/* Label */}
       <motion.span
         {...fadeUp(0)}

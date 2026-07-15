@@ -5,9 +5,14 @@ import {
   LinkedinIcon,
   TwitterIcon,
 } from "@/components/icons/Social";
-import { fadeUp } from "@/lib/animations";
+import { fadeUpMount } from "@/lib/animations";
 
-const NAV_LINKS = ["Home", "How It Works", "Philosophy", "Use Cases"] as const;
+const NAV_LINKS = [
+  { label: "Home", href: "#home" },
+  { label: "How It Works", href: "#how-it-works" },
+  { label: "Philosophy", href: "#philosophy" },
+  { label: "Use Cases", href: "#use-cases" },
+] as const;
 
 const SOCIALS = [
   { Icon: InstagramIcon, label: "Instagram" },
@@ -23,11 +28,11 @@ export function Navbar() {
       transition={{ duration: 0.6, ease: "easeOut" }}
       className="fixed top-0 left-0 right-0 z-50 px-8 md:px-28 py-4"
     >
-      <nav className="flex items-center justify-between">
+      <nav aria-label="Main" className="flex items-center justify-between">
         {/* Left: logo + brand */}
         <motion.a
-          href="#"
-          {...fadeUp(0.1)}
+          href="#home"
+          {...fadeUpMount(0.1)}
           className="flex items-center gap-2 text-foreground"
         >
           <Logo size={28} />
@@ -36,16 +41,16 @@ export function Navbar() {
 
         {/* Center-left: nav links */}
         <motion.ul
-          {...fadeUp(0.2)}
+          {...fadeUpMount(0.2)}
           className="hidden md:flex items-center gap-3 text-sm"
         >
           {NAV_LINKS.map((link, i) => (
-            <li key={link} className="flex items-center gap-3">
+            <li key={link.href} className="flex items-center gap-3">
               <a
-                href={`#${link.toLowerCase().replace(/\s+/g, "-")}`}
+                href={link.href}
                 className="text-muted-foreground transition-colors duration-200 hover:text-foreground"
               >
-                {link}
+                {link.label}
               </a>
               {i < NAV_LINKS.length - 1 && (
                 <span className="text-muted-foreground/40">•</span>
@@ -55,7 +60,7 @@ export function Navbar() {
         </motion.ul>
 
         {/* Right: social icons */}
-        <motion.ul {...fadeUp(0.3)} className="flex items-center gap-2">
+        <motion.ul {...fadeUpMount(0.3)} className="flex items-center gap-2">
           {SOCIALS.map(({ Icon, label }) => (
             <li key={label}>
               <a
