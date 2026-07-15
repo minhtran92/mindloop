@@ -36,6 +36,10 @@
 
   html {
     scroll-behavior: smooth;
+    /* Gentle scroll snapping — proximity (not mandatory) so it only engages
+       when the user is near a snap point, allowing natural scrolling between
+       while pausing at the key storytelling moments. */
+    scroll-snap-type: y proximity;
   }
 
   body {

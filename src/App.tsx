@@ -3,6 +3,7 @@ import { Hero } from "@/components/sections/Hero";
 import { SearchChanged } from "@/components/sections/SearchChanged";
 import { Mission } from "@/components/sections/Mission";
 import { Solution } from "@/components/sections/Solution";
+import { Climax } from "@/components/sections/Climax";
 import { CTA } from "@/components/sections/CTA";
 import { Footer } from "@/components/sections/Footer";
 import { SmoothScroll } from "@/components/providers/SmoothScroll";
@@ -17,6 +18,7 @@ export default function App() {
           <SearchChanged />
           <Mission />
           <Solution />
+          <Climax />
           <CTA />
         </main>
         <Footer />

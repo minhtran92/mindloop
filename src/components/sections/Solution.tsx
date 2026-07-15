@@ -1,171 +1,313 @@
-import { useRef } from "react";
-import { motion, useScroll, useTransform } from "framer-motion";
-import { fadeUp } from "@/lib/animations";
+import { useRef, useMemo } from "react";
+import {
+  motion,
+  useScroll,
+  useTransform,
+  useMotionValueEvent,
+  type MotionValue,
+} from "framer-motion";
+import { useKeyboardSound } from "@/hooks/useKeyboardSound";
 
-const SOLUTION_VIDEO =
-  "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260325_125119_8e5ae31c-0021-4396-bc08-f7aebeb877a2.mp4";
+// ─────────────────────────────────────────────────────────────────────────────
+// MORPHING DOT POSITIONS
+// 20 dots, 5 phases. Each phase is a set of (x, y) coordinates in the
+// SVG viewBox (400 × 300, centered at 0,0 → range -200..200, -150..150).
+// The dots interpolate between phases based on scroll progress.
+// ─────────────────────────────────────────────────────────────────────────────
 
-const FEATURES = [
+const DOT_COUNT = 20;
+
+/** Deterministic pseudo-random generator so chaos looks the same every render. */
+function prng(seed: number): () => number {
+  let s = seed;
+  return () => {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    return s / 0x7fffffff;
+  };
+}
+
+type Point = [number, number];
+
+function generatePhases(): Point[][] {
+  const rand = prng(42);
+
+  // Phase 0 — Chaos: scattered, jittered positions (the noise)
+  const chaos: Point[] = Array.from({ length: DOT_COUNT }, () => [
+    (rand() - 0.5) * 360,
+    (rand() - 0.5) * 260,
+  ]);
+
+  // Phase 1 — Curated Feed: sorted into a clean grid (5 cols × 4 rows)
+  const grid: Point[] = [];
+  for (let i = 0; i < DOT_COUNT; i++) {
+    const col = i % 5;
+    const row = Math.floor(i / 5);
+    grid.push([
+      -160 + col * 80,
+      -120 + row * 80,
+    ]);
+  }
+
+  // Phase 2 — Writer Tools: dots form text-like horizontal lines (4 lines × 5 dots)
+  const text: Point[] = [];
+  for (let i = 0; i < DOT_COUNT; i++) {
+    const line = Math.floor(i / 5);
+    const col = i % 5;
+    text.push([
+      -160 + col * 80,
+      -120 + line * 80,
+    ]);
+  }
+  // (Same positions as grid — the visual difference is that "text" phase
+  //  draws connecting lines between dots on the same row, simulating text.)
+
+  // Phase 3 — Community: dots form a circle, lines connect neighbors
+  const circle: Point[] = [];
+  for (let i = 0; i < DOT_COUNT; i++) {
+    const angle = (i / DOT_COUNT) * Math.PI * 2;
+    circle.push([
+      Math.cos(angle) * 110,
+      Math.sin(angle) * 110,
+    ]);
+  }
+
+  // Phase 4 — Distribution: dots radiate outward (expanded circle + outer ring)
+  const radiate: Point[] = [];
+  for (let i = 0; i < DOT_COUNT; i++) {
+    const angle = (i / DOT_COUNT) * Math.PI * 2;
+    const radius = i % 2 === 0 ? 80 : 150;
+    radiate.push([
+      Math.cos(angle) * radius,
+      Math.sin(angle) * radius,
+    ]);
+  }
+
+  return [chaos, grid, text, circle, radiate];
+}
+
+const PHASES = generatePhases();
+
+// Scroll breakpoints for each phase transition
+const PHASE_BREAKPOINTS = [0, 0.2, 0.42, 0.64, 0.86, 1];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FEATURE CONTENT — text that changes alongside the morphing
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PHASE_CONTENT = [
   {
-    title: "Curated Feed",
+    label: "THE NOISE",
+    title: "The feed is loud.",
     description:
-      "A personalised stream of newsletters ranked by depth, not engagement — tuned to what you actually want to read.",
+      "Every scroll brings a hundred voices, all shouting at once. Signal drowns in noise. You close the tab, no wiser than before.",
   },
   {
-    title: "Writer Tools",
+    label: "01 — CURATED FEED",
+    title: "Then, the noise sorts itself.",
     description:
-      "A focused editor with analytics, audience insights, and AI assist that respects your voice instead of replacing it.",
+      "A personalised stream ranked by depth, not engagement — tuned to what you actually want to read, not what the algorithm wants you to click.",
   },
   {
-    title: "Community",
+    label: "02 — WRITER TOOLS",
+    title: "Tools that support thinking, not replace it.",
     description:
-      "Threaded conversations inside every issue, so readers and writers meet where the thinking actually happens.",
+      "A focused editor with analytics, audience insights, and AI assist that respects your voice instead of flattening it into the average.",
   },
   {
-    title: "Distribution",
+    label: "03 — COMMUNITY",
+    title: "Where connection actually forms.",
     description:
-      "Cross-publish to email, web, RSS, and AI search with one click — your work stays portable and credited.",
+      "Threaded conversations inside every issue, so readers and writers meet where the thinking happens — not in a comments section, but in the margin.",
+  },
+  {
+    label: "04 — DISTRIBUTION",
+    title: "Your work radiates outward.",
+    description:
+      "Cross-publish to email, web, RSS, and AI search with one click. Your writing stays portable, credited, and findable — wherever readers look.",
   },
 ] as const;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPONENTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Single dot whose (cx, cy) interpolates across all 5 phases. */
+function MorphDot({
+  index,
+  progress,
+}: {
+  index: number;
+  progress: MotionValue<number>;
+}) {
+  const xs = PHASES.map((p) => p[index][0]);
+  const ys = PHASES.map((p) => p[index][1]);
+
+  const cx = useTransform(progress, PHASE_BREAKPOINTS, xs);
+  const cy = useTransform(progress, PHASE_BREAKPOINTS, ys);
+
+  return <motion.circle cx={cx} cy={cy} r={5} fill="rgba(255,255,255,0.7)" />;
+}
+
+/** Lines that connect dots — fade in during Community + Distribution phases. */
+function MorphLines({ progress }: { progress: MotionValue<number> }) {
+  // Build edges between consecutive dots on the circle (phase 3) and
+  // radiating edges (phase 4). We render lines between dot i and dot i+1
+  // (and a few cross-links) whose opacity tracks scroll.
+  const lineOpacity = useTransform(progress, [0.5, 0.6, 0.8, 0.9], [0, 0.4, 0.4, 0.25]);
+
+  const edges = useMemo(() => {
+    const e: [number, number][] = [];
+    // Consecutive (circle edges)
+    for (let i = 0; i < DOT_COUNT; i++) {
+      e.push([i, (i + 1) % DOT_COUNT]);
+    }
+    // A few cross-links
+    e.push([0, 5], [5, 10], [10, 15], [15, 0]);
+    e.push([2, 7], [7, 12], [12, 17]);
+    return e;
+  }, []);
+
+  return (
+    <motion.g style={{ opacity: lineOpacity }}>
+      {edges.map(([a, b], i) => (
+        <MorphLine key={i} a={a} b={b} progress={progress} />
+      ))}
+    </motion.g>
+  );
+}
+
+function MorphLine({
+  a,
+  b,
+  progress,
+}: {
+  a: number;
+  b: number;
+  progress: MotionValue<number>;
+}) {
+  const x1 = useTransform(progress, PHASE_BREAKPOINTS, PHASES.map((p) => p[a][0]));
+  const y1 = useTransform(progress, PHASE_BREAKPOINTS, PHASES.map((p) => p[a][1]));
+  const x2 = useTransform(progress, PHASE_BREAKPOINTS, PHASES.map((p) => p[b][0]));
+  const y2 = useTransform(progress, PHASE_BREAKPOINTS, PHASES.map((p) => p[b][1]));
+
+  return <motion.line x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(255,255,255,0.3)" strokeWidth={1} />;
+}
+
+/** Feature text panel — shows the content for the current phase. */
+function FeaturePanel({
+  phaseIndex,
+  progress,
+}: {
+  phaseIndex: number;
+  progress: MotionValue<number>;
+}) {
+  // Each phase's text is visible during its scroll slice.
+  const start = PHASE_BREAKPOINTS[phaseIndex];
+  const end = PHASE_BREAKPOINTS[phaseIndex + 1];
+  const mid = (start + end) / 2;
+
+  const opacity = useTransform(
+    progress,
+    [start + 0.02, mid, end - 0.02],
+    [0, 1, 0]
+  );
+  const y = useTransform(progress, [start, mid, end], [30, 0, -30]);
+
+  const content = PHASE_CONTENT[phaseIndex];
+
+  return (
+    <motion.div
+      style={{ opacity, y }}
+      className="absolute inset-0 flex flex-col justify-center"
+    >
+      <span className="text-xs font-medium uppercase tracking-[3px] text-muted-foreground">
+        {content.label}
+      </span>
+      <h3 className="mt-4 text-2xl font-medium tracking-[-0.5px] md:text-4xl">
+        {content.title}
+      </h3>
+      <p className="mt-4 max-w-md text-base leading-relaxed text-muted-foreground">
+        {content.description}
+      </p>
+    </motion.div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN SECTION
+// ─────────────────────────────────────────────────────────────────────────────
 
 export function Solution() {
   const sectionRef = useRef<HTMLElement>(null);
   const { scrollYProgress } = useScroll({
     target: sectionRef,
-    // Begin revealing as the section enters, finish when it leaves.
     offset: ["start start", "end end"],
+  });
+
+  const playKey = useKeyboardSound();
+  const wasWriterPhase = useRef(false);
+
+  // Play a keyboard tick when entering the Writer Tools phase (phase index 2).
+  // Phase 2 spans scrollYProgress [0.42, 0.64]; we trigger at ~0.48.
+  useMotionValueEvent(scrollYProgress, "change", (v) => {
+    const inWriter = v > 0.46 && v < 0.6;
+    if (inWriter && !wasWriterPhase.current) {
+      wasWriterPhase.current = true;
+      playKey();
+    } else if (!inWriter) {
+      wasWriterPhase.current = false;
+    }
   });
 
   return (
     <section
       ref={sectionRef}
       id="use-cases"
-      className="border-t border-border/30 scroll-mt-20"
+      className="relative border-t border-border/30 scroll-mt-20"
+      style={{ height: "400vh" }}
     >
-      {/* Top intro block — label + heading + video. Fades in normally. */}
-      <div className="px-6 pt-32 md:pt-44">
-        <motion.span
-          {...fadeUp(0)}
-          className="block text-center text-xs font-medium uppercase tracking-[3px] text-muted-foreground"
-        >
-          SOLUTION
-        </motion.span>
-
-        <motion.h2
-          {...fadeUp(0.1)}
-          className="mx-auto mt-6 max-w-4xl text-center text-4xl font-medium tracking-[-1px] md:text-6xl"
-        >
-          The platform for{" "}
-          <span className="font-serif font-normal italic">meaningful</span> content
-        </motion.h2>
-
-        <motion.div {...fadeUp(0.2)} className="mx-auto mt-16 max-w-6xl">
-          <video
-            className="aspect-[3/1] w-full rounded-2xl object-cover"
-            src={SOLUTION_VIDEO}
-            autoPlay
-            loop
-            muted
-            playsInline
-            preload="auto"
-          />
-        </motion.div>
-      </div>
-
-      {/* Sticky storytelling block.
-          Layout: 2 columns on desktop.
-            - Left: heading + subtitle, pinned while the right column scrolls.
-            - Right: each feature reveals sequentially as the user scrolls.
-          Section height = top padding + N features × feature row height +
-          bottom padding, giving enough scroll distance for the sequential
-          reveal to feel deliberate. */}
-      <div className="px-6 md:px-28">
-        <div className="grid gap-12 md:grid-cols-2 md:gap-16">
-          {/* LEFT — sticky on md+ */}
-          <div className="md:sticky md:top-32 md:self-start md:h-fit">
-            <motion.h3
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-100px" }}
-              transition={{ duration: 0.6, ease: "easeOut" }}
-              className="text-3xl font-medium tracking-[-0.5px] md:text-4xl"
+      {/* Sticky viewport — the morphing plays out here */}
+      <div className="sticky top-0 flex h-screen items-center overflow-hidden">
+        <div className="grid w-full grid-cols-1 gap-8 px-6 md:grid-cols-2 md:gap-16 md:px-28">
+          {/* LEFT — morphing SVG visualization */}
+          <div className="flex items-center justify-center">
+            <svg
+              viewBox="-200 -150 400 300"
+              className="h-[280px] w-full max-w-md md:h-[400px]"
+              aria-hidden="true"
             >
-              Built for the people who{" "}
-              <span className="font-serif font-normal italic">think</span> in
-              long form.
-            </motion.h3>
-            <motion.p
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-100px" }}
-              transition={{ duration: 0.6, delay: 0.15, ease: "easeOut" }}
-              className="mt-5 max-w-md text-base leading-relaxed text-muted-foreground"
-            >
-              Four pillars hold Mindloop up. Scroll through each — they{"'"}re
-              designed to fit together, not to be picked apart.
-            </motion.p>
+              <MorphLines progress={scrollYProgress} />
+              {Array.from({ length: DOT_COUNT }).map((_, i) => (
+                <MorphDot key={i} index={i} progress={scrollYProgress} />
+              ))}
+            </svg>
           </div>
 
-          {/* RIGHT — sequential reveal. Each feature gets its own scroll slice. */}
-          <div className="flex flex-col">
-            {FEATURES.map((feature, i) => {
-              // Each feature occupies a slice of the scroll range.
-              const slice = 1 / FEATURES.length;
-              const start = i * slice;
-              const end = start + slice;
-              // Opacity ramps up at the start of the slice and holds,
-              // then ramps down just before the next feature takes over.
-              const fadeStart = start;
-              const fadePeak = start + slice * 0.3;
-              const fadeHold = end - slice * 0.3;
-              const fadeEnd = end;
-
-              const opacity = useTransform(
-                scrollYProgress,
-                [fadeStart, fadePeak, fadeHold, fadeEnd],
-                [0.15, 1, 1, 0.15]
-              );
-              const y = useTransform(
-                scrollYProgress,
-                [fadeStart, fadePeak, fadeHold, fadeEnd],
-                [30, 0, 0, -30]
-              );
-
-              return (
-                <motion.div
-                  key={feature.title}
-                  style={{ opacity, y }}
-                  className="border-t border-border/40 py-12 first:border-t-0 first:pt-0 md:py-16"
-                >
-                  <div className="flex items-baseline gap-4">
-                    <span className="font-mono text-xs text-muted-foreground/60">
-                      {String(i + 1).padStart(2, "0")}
-                    </span>
-                    <h4 className="text-2xl font-semibold tracking-[-0.3px] md:text-3xl">
-                      {feature.title}
-                    </h4>
-                  </div>
-                  <p className="mt-4 max-w-md text-base leading-relaxed text-muted-foreground md:text-lg">
-                    {feature.description}
-                  </p>
-                </motion.div>
-              );
-            })}
+          {/* RIGHT — feature text, changes per phase */}
+          <div className="relative h-[280px] md:h-[400px]">
+            {PHASE_CONTENT.map((_, i) => (
+              <FeaturePanel key={i} phaseIndex={i} progress={scrollYProgress} />
+            ))}
           </div>
         </div>
       </div>
 
-      {/* Closing line, fades in after the sticky block releases. */}
-      <motion.p
-        {...fadeUp(0)}
-        className="mx-auto mt-24 max-w-2xl px-6 pb-32 text-center text-lg text-muted-foreground md:mt-32 md:pb-44"
-      >
-        Less noise, less friction — more{" "}
-        <span className="font-serif font-normal italic text-foreground">
-          meaning
-        </span>{" "}
-        for everyone involved.
-      </motion.p>
+      {/* Closing line after the sticky block releases */}
+      <div className="flex min-h-screen items-center justify-center px-6">
+        <motion.p
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-100px" }}
+          transition={{ duration: 0.8, ease: "easeOut" }}
+          className="max-w-2xl text-center text-2xl font-medium tracking-[-0.5px] md:text-4xl"
+        >
+          Less noise, less friction — more{" "}
+          <span className="font-serif font-normal italic text-foreground">
+            meaning
+          </span>{" "}
+          for everyone involved.
+        </motion.p>
+      </div>
     </section>
   );
 }

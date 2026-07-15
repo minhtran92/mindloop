@@ -1,5 +1,10 @@
 import { useRef } from "react";
-import { motion, useScroll, useTransform, type MotionValue } from "framer-motion";
+import {
+  motion,
+  useScroll,
+  useTransform,
+  type MotionValue,
+} from "framer-motion";
 import { fadeUp } from "@/lib/animations";
 
 const PLATFORMS = [
@@ -8,66 +13,71 @@ const PLATFORMS = [
     icon: "/assets/icon-chatgpt.png",
     description:
       "Conversational answers that synthesise sources, but rarely credit the writers behind them.",
-    // Each icon gets a distinct parallax depth — far icons move slower,
-    // near icons move faster, creating a sense of layered depth.
-    parallax: 40,
+    // Starting offset from center (in px) — spread in a row
+    startX: -180,
+    startY: 0,
   },
   {
     name: "Perplexity",
     icon: "/assets/icon-perplexity.png",
     description:
       "Real-time search with citations — useful for facts, not for following a writer's voice.",
-    parallax: -20,
+    startX: 0,
+    startY: -10,
   },
   {
     name: "Google AI",
     icon: "/assets/icon-google.png",
     description:
       "AI overviews compress the open web into a single answer box, hollowing out the click.",
-    parallax: 60,
+    startX: 180,
+    startY: 10,
   },
 ] as const;
 
-/** Single platform card with parallax on the icon. */
-function PlatformCard({
+/** A single platform icon that converges toward center as the user scrolls. */
+function MergingIcon({
   platform,
-  index,
-  scrollProgress,
+  progress,
 }: {
   platform: (typeof PLATFORMS)[number];
-  index: number;
-  scrollProgress: MotionValue<number>;
+  progress: MotionValue<number>;
 }) {
-  // Icon translates Y across the section's scroll progress.
-  // Negative parallax = icon moves up as user scrolls down (foreground feel).
-  // Positive parallax = icon moves down (background feel).
+  // Phase mapping:
+  //   0.00 - 0.15  →  icons sit in starting positions (spread)
+  //   0.15 - 0.55  →  icons converge toward center (0,0)
+  //   0.55 - 0.72  →  icons shrink + fade into the dark circle
+  //   0.72 - 1.00  →  icons gone; dark circle + question hold
+  const x = useTransform(
+    progress,
+    [0, 0.15, 0.55, 0.72],
+    [platform.startX, platform.startX, 0, 0]
+  );
   const y = useTransform(
-    scrollProgress,
-    [0, 1],
-    [-platform.parallax, platform.parallax]
+    progress,
+    [0, 0.15, 0.55, 0.72],
+    [platform.startY, platform.startY, 0, 0]
+  );
+  const scale = useTransform(
+    progress,
+    [0, 0.15, 0.55, 0.72],
+    [1, 1, 0.35, 0.15]
+  );
+  const opacity = useTransform(
+    progress,
+    [0, 0.15, 0.5, 0.68],
+    [1, 1, 0.8, 0]
   );
 
   return (
-    <motion.div
-      key={platform.name}
-      {...fadeUp(0.2 + index * 0.1)}
-      className="flex flex-col items-center text-center"
-    >
-      <motion.img
-        src={platform.icon}
-        alt={`${platform.name} icon`}
-        className="h-[200px] w-[200px] object-contain"
-        width={200}
-        height={200}
-        style={{ y }}
-        // Subtle will-change hint for smoother GPU compositing
-        data-parallax
-      />
-      <h3 className="mt-6 text-base font-semibold">{platform.name}</h3>
-      <p className="mt-3 max-w-xs text-sm text-muted-foreground">
-        {platform.description}
-      </p>
-    </motion.div>
+    <motion.img
+      src={platform.icon}
+      alt={`${platform.name} icon`}
+      className="absolute h-[120px] w-[120px] object-contain md:h-[160px] md:w-[160px]"
+      width={160}
+      height={160}
+      style={{ x, y, scale, opacity }}
+    />
   );
 }
 
@@ -75,55 +85,137 @@ export function SearchChanged() {
   const sectionRef = useRef<HTMLElement>(null);
   const { scrollYProgress } = useScroll({
     target: sectionRef,
-    // Start tracking when the section's top hits the bottom of the viewport,
-    // stop when the section's bottom hits the top.
-    offset: ["start end", "end start"],
+    offset: ["start start", "end end"],
   });
+
+  // The dark circle (the "black hole") emerges as icons merge
+  const circleScale = useTransform(
+    scrollYProgress,
+    [0.4, 0.65, 0.8],
+    [0.3, 1, 1.1]
+  );
+  const circleOpacity = useTransform(
+    scrollYProgress,
+    [0.4, 0.6, 0.72],
+    [0, 0.85, 1]
+  );
+  // Inner glow pulse after formation
+  const circleGlow = useTransform(
+    scrollYProgress,
+    [0.65, 0.85],
+    [0, 0.4]
+  );
+
+  // Question text — the emotional climax of this section
+  const questionOpacity = useTransform(
+    scrollYProgress,
+    [0.78, 0.88, 0.97],
+    [0, 1, 1]
+  );
+  const questionY = useTransform(
+    scrollYProgress,
+    [0.78, 0.88],
+    [30, 0]
+  );
+
+  // Labels under icons — fade out as merge begins
+  const labelsOpacity = useTransform(
+    scrollYProgress,
+    [0, 0.1, 0.2],
+    [1, 1, 0]
+  );
+
+  // Heading + subtitle fade out as merge zone takes over
+  const headingOpacity = useTransform(
+    scrollYProgress,
+    [0, 0.05, 0.12],
+    [1, 1, 0]
+  );
 
   return (
     <section
       ref={sectionRef}
       id="how-it-works"
-      className="px-6 pt-52 pb-6 md:pt-64 md:pb-9 scroll-mt-20"
+      className="relative scroll-mt-20"
+      // Tall section — gives enough scroll distance for the merge narrative
+      style={{ height: "320vh" }}
     >
-      {/* Heading */}
-      <motion.h2
-        {...fadeUp(0)}
-        className="mx-auto max-w-5xl text-center text-5xl font-medium tracking-[-2px] md:text-7xl lg:text-8xl"
-      >
-        Search has <span className="font-serif font-normal italic">changed.</span>
-        <br className="hidden md:block" /> Have you?
-      </motion.h2>
+      {/* Sticky viewport — the merge plays out here, pinned while user scrolls */}
+      <div className="sticky top-0 flex h-screen items-center justify-center overflow-hidden">
+        {/* Heading + subtitle — top of the sticky zone, fades as merge begins */}
+        <motion.div
+          style={{ opacity: headingOpacity }}
+          className="absolute top-28 left-0 right-0 px-6 text-center md:top-32"
+        >
+          <motion.h2
+            {...fadeUp(0)}
+            className="mx-auto max-w-5xl text-5xl font-medium tracking-[-2px] md:text-7xl lg:text-8xl"
+          >
+            Search has{" "}
+            <span className="font-serif font-normal italic">changed.</span>
+            <br className="hidden md:block" /> Have you?
+          </motion.h2>
+          <motion.p
+            {...fadeUp(0.1)}
+            className="mx-auto mt-8 max-w-2xl text-lg text-muted-foreground"
+          >
+            Three platforms now mediate what the world reads. Watch what
+            happens when they converge.
+          </motion.p>
+        </motion.div>
 
-      {/* Subtitle */}
-      <motion.p
-        {...fadeUp(0.1)}
-        className="mx-auto mt-8 mb-24 max-w-2xl text-center text-lg text-muted-foreground"
-      >
-        The answers people used to discover through blogs, newsletters, and
-        long-form writing are now surfaced — and often stripped of their
-        authors — by AI platforms.
-      </motion.p>
-
-      {/* Platform cards with parallax icons */}
-      <div className="mx-auto mb-20 grid max-w-6xl gap-12 md:grid-cols-3 md:gap-8">
-        {PLATFORMS.map((platform, i) => (
-          <PlatformCard
-            key={platform.name}
-            platform={platform}
-            index={i}
-            scrollProgress={scrollYProgress}
+        {/* Icon cluster — relative container for merging icons */}
+        <div className="relative flex items-center justify-center">
+          {/* The dark circle — "the black hole" that swallows the icons */}
+          <motion.div
+            style={{
+              scale: circleScale,
+              opacity: circleOpacity,
+              boxShadow: useTransform(
+                circleGlow,
+                (v) => `0 0 ${80 * v}px ${20 * v}px rgba(0,0,0,${0.6 * v})`
+              ),
+            }}
+            className="absolute h-48 w-48 rounded-full bg-foreground md:h-64 md:w-64"
           />
-        ))}
-      </div>
 
-      {/* Bottom tagline */}
-      <motion.p
-        {...fadeUp(0.5)}
-        className="text-center text-sm text-muted-foreground"
-      >
-        If you don't answer the questions, someone else will.
-      </motion.p>
+          {/* Platform labels — fade out as merge begins */}
+          <motion.div
+            style={{ opacity: labelsOpacity }}
+            className="absolute -bottom-40 flex gap-12 md:gap-20"
+          >
+            {PLATFORMS.map((p) => (
+              <div key={p.name} className="w-[120px] text-center md:w-[160px]">
+                <p className="text-sm font-semibold text-foreground">{p.name}</p>
+              </div>
+            ))}
+          </motion.div>
+
+          {/* The three merging icons */}
+          {PLATFORMS.map((platform) => (
+            <MergingIcon
+              key={platform.name}
+              platform={platform}
+              progress={scrollYProgress}
+            />
+          ))}
+        </div>
+
+        {/* The question — appears after the merge */}
+        <motion.div
+          style={{ opacity: questionOpacity, y: questionY }}
+          className="absolute bottom-32 left-0 right-0 px-6 text-center md:bottom-40"
+        >
+          <p className="mx-auto max-w-2xl text-2xl font-medium tracking-[-0.5px] text-foreground md:text-4xl">
+            Where is{" "}
+            <span className="font-serif font-normal italic">your voice</span>{" "}
+            in this crowd?
+          </p>
+          <p className="mt-4 text-sm text-muted-foreground md:text-base">
+            If you don&rsquo;t answer the questions, someone else will.
+          </p>
+        </motion.div>
+      </div>
     </section>
   );
 }
