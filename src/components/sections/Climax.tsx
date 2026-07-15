@@ -4,22 +4,20 @@ import { motion } from "framer-motion";
 /**
  * The Climax — the emotional peak of the page.
  *
- * A tall, mostly-empty section (300vh) where a single sentence reveals
- * itself word by word as the user scrolls. The deliberate emptiness forces
- * a pause — a moment of reflection between the Solution story and the CTA.
+ * Minimalist by design. A single question, centered on a black screen,
+ * that fades in slowly and holds. No parallax, no morphing, no dots —
+ * just the question and the silence around it.
  *
- * Sentence: "The internet has lost its curiosity. We're bringing it back."
+ * The question is bilingual-friendly but written in Vietnamese to match
+ * the user's language: "Nơi bạn viết, hay nơi máy móc trả lời?"
+ * ("Where you write, or where machines answer?")
  *
- * Implementation:
- *   Uses a native window scroll listener + useState for progress (not
- *   framer-motion's useScroll/useTransform — those proved unreliable with
- *   Lenis + sticky sections). Opacity/y are computed inline from progress
- *   and applied via motion.p style props.
+ * Implementation: 200vh section with a sticky inner. The question fades
+ * in during the first 30% of scroll, holds at full opacity through the
+ * middle, then fades slightly at the end as the CTA approaches.
  */
 
-const LINE_1 = "The internet has lost its curiosity.";
-const LINE_2_PREFIX = "We're bringing it ";
-const LINE_2_HIGHLIGHT = "back";
+const QUESTION_LINE_1 = "Nơi bạn viết,";
 
 // Linear interpolation helper
 function lerp(v: number, inMin: number, inMax: number, outMin: number, outMax: number): number {
@@ -46,9 +44,7 @@ export function Climax() {
         setProgress(0);
         return;
       }
-      setProgress(
-        Math.max(0, Math.min(1, (window.scrollY - absTop) / scrollHeight))
-      );
+      setProgress(Math.max(0, Math.min(1, (window.scrollY - absTop) / scrollHeight)));
     }
 
     function onScroll() {
@@ -76,43 +72,41 @@ export function Climax() {
     };
   }, []);
 
-  // Derive opacities + y from progress
-  const line1Opacity = lerp(progress, 0.15, 0.35, 0, 1);
-  const line1Y = lerp(progress, 0.15, 0.35, 40, 0);
-  const line2Opacity = lerp(progress, 0.55, 0.7, 0, 1);
-  const line2Y = lerp(progress, 0.55, 0.7, 40, 0);
-  const ambientOpacity = lerp(progress, 0.85, 1, 1, 0.3);
+  // Line 1 fades in [0.1, 0.3], holds, fades slightly at end
+  const line1Opacity = lerp(progress, 0.1, 0.3, 0, 1);
+  // Line 2 fades in [0.35, 0.55], holds, fades slightly at end
+  const line2Opacity = lerp(progress, 0.35, 0.55, 0, 1);
+  // Both lines fade to 0.4 in the last 15% to prepare transition to CTA
+  const ambientDim = progress > 0.85 ? lerp(progress, 0.85, 1, 1, 0.4) : 1;
 
   return (
     <section
       ref={sectionRef}
       className="relative flex items-center justify-center overflow-hidden"
-      style={{ height: "300vh", scrollSnapAlign: "start", scrollSnapStop: "always" }}
+      style={{ height: "200vh", scrollSnapAlign: "start", scrollSnapStop: "always" }}
     >
-      {/* Sticky inner — the text holds in place while user scrolls through */}
+      {/* Sticky inner — the question holds in place while user scrolls */}
       <div className="sticky top-0 flex h-screen w-full items-center justify-center px-6">
         <motion.div
-          style={{ opacity: ambientOpacity }}
-          className="max-w-3xl text-center"
+          style={{ opacity: ambientDim }}
+          className="max-w-4xl text-center"
         >
-          {/* Line 1 */}
+          {/* Line 1 — large, muted */}
           <motion.p
-            style={{ opacity: line1Opacity, y: line1Y }}
-            className="text-3xl font-medium tracking-[-0.5px] text-muted-foreground md:text-5xl lg:text-6xl"
+            style={{ opacity: line1Opacity }}
+            className="text-4xl font-medium tracking-[-1px] text-muted-foreground md:text-6xl lg:text-7xl"
           >
-            {LINE_1}
+            {QUESTION_LINE_1}
           </motion.p>
 
-          {/* Line 2 */}
+          {/* Line 2 — larger, foreground, serif italic accent on "máy móc" */}
           <motion.p
-            style={{ opacity: line2Opacity, y: line2Y }}
-            className="mt-8 text-3xl font-medium tracking-[-0.5px] text-foreground md:text-5xl lg:text-6xl"
+            style={{ opacity: line2Opacity }}
+            className="mt-6 text-5xl font-medium tracking-[-1.5px] text-foreground md:text-7xl lg:text-8xl"
           >
-            {LINE_2_PREFIX}
-            <span className="font-serif font-normal italic">
-              {LINE_2_HIGHLIGHT}
-            </span>
-            .
+            hay nơi{" "}
+            <span className="font-serif font-normal italic">máy móc</span>{" "}
+            trả lời?
           </motion.p>
         </motion.div>
       </div>

@@ -1,17 +1,25 @@
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { useKeyboardSound } from "@/hooks/useKeyboardSound";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MORPHING DOT POSITIONS
-// 20 dots, 5 phases. Each phase is a set of (x, y) coordinates in the
-// SVG viewBox (400 × 300, centered at 0,0 → range -200..200, -150..150).
-// The dots interpolate between phases based on scroll progress.
+// THE STRAIGHTENING LINE
+//
+// A single SVG path that morphs from a chaotic zigzag (the noise) into a
+// clean straight line (clarity) as the user scrolls.
+//
+// Story: Mindloop takes the tangled mess of feeds and helps your thinking
+// straighten out — one line, one direction, one clear thought.
+//
+// The path is generated from N control points. At progress=0 they're
+// scattered randomly (chaos). At progress=1 they're collinear (clarity).
+// We interpolate linearly between the two states.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const DOT_COUNT = 20;
+const POINT_COUNT = 24;
+const VIEW_WIDTH = 600;
+const VIEW_HEIGHT = 200;
 
-/** Deterministic pseudo-random generator so chaos looks the same every render. */
+/** Deterministic PRNG so chaos looks the same every render. */
 function prng(seed: number): () => number {
   let s = seed;
   return () => {
@@ -20,206 +28,48 @@ function prng(seed: number): () => number {
   };
 }
 
-type Point = [number, number];
+/** Generate the chaos positions (random scatter along x, jittered y). */
+const CHAOS_POINTS: [number, number][] = (() => {
+  const rand = prng(7);
+  return Array.from({ length: POINT_COUNT }, (_, i) => {
+    const x = (i / (POINT_COUNT - 1)) * VIEW_WIDTH;
+    // Heavy vertical jitter — looks tangled
+    const y = VIEW_HEIGHT / 2 + (rand() - 0.5) * VIEW_HEIGHT * 0.85;
+    return [x, y];
+  });
+})();
 
-function generatePhases(): Point[][] {
-  const rand = prng(42);
-
-  // Phase 0 — Chaos: scattered, jittered positions (the noise)
-  const chaos: Point[] = Array.from({ length: DOT_COUNT }, () => [
-    (rand() - 0.5) * 360,
-    (rand() - 0.5) * 260,
-  ]);
-
-  // Phase 1 — Curated Feed: sorted into a clean grid (5 cols × 4 rows)
-  const grid: Point[] = [];
-  for (let i = 0; i < DOT_COUNT; i++) {
-    const col = i % 5;
-    const row = Math.floor(i / 5);
-    grid.push([-160 + col * 80, -120 + row * 80]);
+/** Generate the clarity positions (perfectly straight horizontal line). */
+const CLARITY_POINTS: [number, number][] = Array.from(
+  { length: POINT_COUNT },
+  (_, i) => {
+    const x = (i / (POINT_COUNT - 1)) * VIEW_WIDTH;
+    const y = VIEW_HEIGHT / 2;
+    return [x, y];
   }
+);
 
-  // Phase 2 — Writer Tools: same grid positions (the visual difference is
-  // conceptual — "text" phase). We keep grid positions.
-  const text: Point[] = grid;
-
-  // Phase 3 — Community: dots form a circle, lines connect neighbors
-  const circle: Point[] = [];
-  for (let i = 0; i < DOT_COUNT; i++) {
-    const angle = (i / DOT_COUNT) * Math.PI * 2;
-    circle.push([Math.cos(angle) * 110, Math.sin(angle) * 110]);
-  }
-
-  // Phase 4 — Distribution: dots radiate outward (dual-ring)
-  const radiate: Point[] = [];
-  for (let i = 0; i < DOT_COUNT; i++) {
-    const angle = (i / DOT_COUNT) * Math.PI * 2;
-    const radius = i % 2 === 0 ? 80 : 150;
-    radiate.push([Math.cos(angle) * radius, Math.sin(angle) * radius]);
-  }
-
-  return [chaos, grid, text, circle, radiate];
+/** Linear interpolation between two points. */
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
 }
 
-const PHASES = generatePhases();
-
-// Scroll breakpoints for each phase transition
-const PHASE_BREAKPOINTS = [0, 0.2, 0.42, 0.64, 0.86, 1];
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FEATURE CONTENT — text that changes alongside the morphing
-// ─────────────────────────────────────────────────────────────────────────────
-
-const PHASE_CONTENT = [
-  {
-    label: "THE NOISE",
-    title: "The feed is loud.",
-    description:
-      "Every scroll brings a hundred voices, all shouting at once. Signal drowns in noise. You close the tab, no wiser than before.",
-  },
-  {
-    label: "01 — CURATED FEED",
-    title: "Then, the noise sorts itself.",
-    description:
-      "A personalised stream ranked by depth, not engagement — tuned to what you actually want to read, not what the algorithm wants you to click.",
-  },
-  {
-    label: "02 — WRITER TOOLS",
-    title: "Tools that support thinking, not replace it.",
-    description:
-      "A focused editor with analytics, audience insights, and AI assist that respects your voice instead of flattening it into the average.",
-  },
-  {
-    label: "03 — COMMUNITY",
-    title: "Where connection actually forms.",
-    description:
-      "Threaded conversations inside every issue, so readers and writers meet where the thinking happens — not in a comments section, but in the margin.",
-  },
-  {
-    label: "04 — DISTRIBUTION",
-    title: "Your work radiates outward.",
-    description:
-      "Cross-publish to email, web, RSS, and AI search with one click. Your writing stays portable, credited, and findable — wherever readers look.",
-  },
-] as const;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// INTERPOLATION HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** Linear interpolation between breakpoints. */
-function lerpMulti(
-  value: number,
-  breakpoints: number[],
-  outputs: number[]
-): number {
-  if (value <= breakpoints[0]) return outputs[0];
-  if (value >= breakpoints[breakpoints.length - 1]) return outputs[outputs.length - 1];
-  for (let i = 0; i < breakpoints.length - 1; i++) {
-    if (value >= breakpoints[i] && value <= breakpoints[i + 1]) {
-      const t = (value - breakpoints[i]) / (breakpoints[i + 1] - breakpoints[i]);
-      return outputs[i] + t * (outputs[i + 1] - outputs[i]);
-    }
-  }
-  return outputs[outputs.length - 1];
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// COMPONENTS
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** Single dot whose (cx, cy) interpolates across all 5 phases. */
-function MorphDot({
-  index,
-  progress,
-}: {
-  index: number;
-  progress: number;
-}) {
-  const xs = PHASES.map((p) => p[index][0]);
-  const ys = PHASES.map((p) => p[index][1]);
-
-  const cx = lerpMulti(progress, PHASE_BREAKPOINTS, xs);
-  const cy = lerpMulti(progress, PHASE_BREAKPOINTS, ys);
-
-  return <circle cx={cx} cy={cy} r={5} fill="rgba(255,255,255,0.7)" />;
-}
-
-/** Lines that connect dots — fade in during Community + Distribution phases. */
-function MorphLines({ progress }: { progress: number }) {
-  const lineOpacity = lerpMulti(progress, [0.5, 0.6, 0.8, 0.9], [0, 0.4, 0.4, 0.25]);
-
-  const edges = useMemo(() => {
-    const e: [number, number][] = [];
-    for (let i = 0; i < DOT_COUNT; i++) {
-      e.push([i, (i + 1) % DOT_COUNT]);
-    }
-    e.push([0, 5], [5, 10], [10, 15], [15, 0]);
-    e.push([2, 7], [7, 12], [12, 17]);
-    return e;
-  }, []);
-
-  return (
-    <g style={{ opacity: lineOpacity }}>
-      {edges.map(([a, b], i) => (
-        <MorphLine key={i} a={a} b={b} progress={progress} />
-      ))}
-    </g>
-  );
-}
-
-function MorphLine({
-  a,
-  b,
-  progress,
-}: {
-  a: number;
-  b: number;
-  progress: number;
-}) {
-  const x1 = lerpMulti(progress, PHASE_BREAKPOINTS, PHASES.map((p) => p[a][0]));
-  const y1 = lerpMulti(progress, PHASE_BREAKPOINTS, PHASES.map((p) => p[a][1]));
-  const x2 = lerpMulti(progress, PHASE_BREAKPOINTS, PHASES.map((p) => p[b][0]));
-  const y2 = lerpMulti(progress, PHASE_BREAKPOINTS, PHASES.map((p) => p[b][1]));
-
-  return <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(255,255,255,0.3)" strokeWidth={1} />;
-}
-
-/** Feature text panel — shows the content for the current phase. */
-function FeaturePanel({
-  phaseIndex,
-  progress,
-}: {
-  phaseIndex: number;
-  progress: number;
-}) {
-  const start = PHASE_BREAKPOINTS[phaseIndex];
-  const end = PHASE_BREAKPOINTS[phaseIndex + 1];
-  const mid = (start + end) / 2;
-
-  const opacity = lerpMulti(progress, [start + 0.02, mid, end - 0.02], [0, 1, 0]);
-  const y = lerpMulti(progress, [start, mid, end], [30, 0, -30]);
-
-  if (opacity < 0.01) return null;
-
-  const content = PHASE_CONTENT[phaseIndex];
-
-  return (
-    <motion.div
-      style={{ opacity, y }}
-      className="absolute inset-0 flex flex-col justify-center"
-    >
-      <span className="text-xs font-medium uppercase tracking-[3px] text-muted-foreground">
-        {content.label}
-      </span>
-      <h3 className="mt-4 text-2xl font-medium tracking-[-0.5px] md:text-4xl">
-        {content.title}
-      </h3>
-      <p className="mt-4 max-w-md text-base leading-relaxed text-muted-foreground">
-        {content.description}
-      </p>
-    </motion.div>
-  );
+/** Build an SVG path string from points (smoothed via simple line-to). */
+function buildPath(points: [number, number][], smoothness: number): string {
+  if (points.length === 0) return "";
+  // Apply Catmull-Rom-ish smoothing by averaging neighbors when smoothness > 0
+  const smoothed = points.map((p, i) => {
+    if (i === 0 || i === points.length - 1 || smoothness === 0) return p;
+    const prev = points[i - 1];
+    const next = points[i + 1];
+    return [
+      lerp(p[0], (prev[0] + next[0]) / 2, smoothness),
+      lerp(p[1], (prev[1] + next[1]) / 2, smoothness),
+    ] as [number, number];
+  });
+  return smoothed
+    .map((p, i) => `${i === 0 ? "M" : "L"} ${p[0].toFixed(2)} ${p[1].toFixed(2)}`)
+    .join(" ");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -229,11 +79,8 @@ function FeaturePanel({
 export function Solution() {
   const sectionRef = useRef<HTMLElement>(null);
   const [progress, setProgress] = useState(0);
-  const playKey = useKeyboardSound();
-  const wasWriterPhase = useRef(false);
 
-  // Native scroll listener + useState for progress (more reliable than
-  // framer-motion's useScroll/useTransform with Lenis + sticky sections).
+  // Native scroll listener — reliable under Lenis + sticky sections.
   useEffect(() => {
     let rafId: number | null = null;
 
@@ -275,48 +122,91 @@ export function Solution() {
     };
   }, []);
 
-  // Play a keyboard tick when entering the Writer Tools phase (phase index 2).
-  // Phase 2 spans progress [0.42, 0.64]; we trigger at ~0.48.
-  useEffect(() => {
-    const inWriter = progress > 0.46 && progress < 0.6;
-    if (inWriter && !wasWriterPhase.current) {
-      wasWriterPhase.current = true;
-      playKey();
-    } else if (!inWriter) {
-      wasWriterPhase.current = false;
-    }
-  }, [progress, playKey]);
+  // Interpolate points from chaos → clarity based on progress.
+  // Use an ease-out curve so the line straightens faster at first, then
+  // settles into perfect clarity at the end.
+  const easedProgress = 1 - Math.pow(1 - progress, 2);
+  const currentPoints = CHAOS_POINTS.map((chaos, i) => {
+    const clarity = CLARITY_POINTS[i];
+    return [
+      lerp(chaos[0], clarity[0], easedProgress),
+      lerp(chaos[1], clarity[1], easedProgress),
+    ] as [number, number];
+  });
+
+  // Smoothing: more smooth as progress increases (the chaos is jagged,
+  // clarity is already smooth). At progress=0, no smoothing (raw zigzag).
+  // At progress=1, full smoothing (but it's already a straight line).
+  const smoothness = easedProgress * 0.6;
+  const pathD = buildPath(currentPoints, smoothness);
+
+  // Line opacity — fades in slightly at the very start, holds, then
+  // brightens as it straightens (the "clarity" reveal).
+  const lineOpacity = 0.4 + progress * 0.6;
+  const lineWidth = 1.5 + progress * 1.5;
+
+  // Caption text changes at key moments
+  let caption: string;
+  let captionOpacity: number;
+  if (progress < 0.15) {
+    caption = "This is your feed today.";
+    captionOpacity = 1;
+  } else if (progress < 0.3) {
+    caption = "A tangle of signals.";
+    captionOpacity = 1;
+  } else if (progress < 0.55) {
+    caption = "Slowly, it sorts itself.";
+    captionOpacity = 1;
+  } else if (progress < 0.8) {
+    caption = "Until there is only one direction.";
+    captionOpacity = 1;
+  } else {
+    caption = "Clarity.";
+    captionOpacity = 1;
+  }
 
   return (
     <section
       ref={sectionRef}
       id="use-cases"
       className="relative border-t border-border/30 scroll-mt-20"
-      style={{ height: "400vh" }}
+      style={{ height: "300vh" }}
     >
-      {/* Sticky viewport — the morphing plays out here */}
-      <div className="sticky top-0 flex h-screen items-center overflow-hidden">
-        <div className="grid w-full grid-cols-1 gap-8 px-6 md:grid-cols-2 md:gap-16 md:px-28">
-          {/* LEFT — morphing SVG visualization */}
-          <div className="flex items-center justify-center">
-            <svg
-              viewBox="-200 -150 400 300"
-              className="h-[280px] w-full max-w-md md:h-[400px]"
-              aria-hidden="true"
-            >
-              <MorphLines progress={progress} />
-              {Array.from({ length: DOT_COUNT }).map((_, i) => (
-                <MorphDot key={i} index={i} progress={progress} />
-              ))}
-            </svg>
-          </div>
+      {/* Sticky viewport — the line morph plays out here */}
+      <div className="sticky top-0 flex h-screen flex-col items-center justify-center overflow-hidden px-6">
+        {/* The line — centered, large */}
+        <svg
+          viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
+          className="h-[120px] w-full max-w-3xl md:h-[200px] md:max-w-4xl"
+          aria-hidden="true"
+          preserveAspectRatio="xMidYMid meet"
+        >
+          <path
+            d={pathD}
+            fill="none"
+            stroke="rgba(255,255,255,0.9)"
+            strokeWidth={lineWidth}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ opacity: lineOpacity, transition: "stroke-width 0.2s ease" }}
+          />
+        </svg>
 
-          {/* RIGHT — feature text, changes per phase */}
-          <div className="relative h-[280px] md:h-[400px]">
-            {PHASE_CONTENT.map((_, i) => (
-              <FeaturePanel key={i} phaseIndex={i} progress={progress} />
-            ))}
-          </div>
+        {/* Caption — large, centered below the line */}
+        <div className="mt-12 md:mt-16 text-center">
+          <motion.p
+            key={caption}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: captionOpacity, y: 0 }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+            className="text-4xl font-medium tracking-[-1px] text-foreground md:text-6xl lg:text-7xl"
+          >
+            {caption === "Clarity." ? (
+              <span className="font-serif font-normal italic">{caption}</span>
+            ) : (
+              caption
+            )}
+          </motion.p>
         </div>
       </div>
 
@@ -327,7 +217,7 @@ export function Solution() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-100px" }}
           transition={{ duration: 0.8, ease: "easeOut" }}
-          className="max-w-2xl text-center text-2xl font-medium tracking-[-0.5px] md:text-4xl"
+          className="max-w-3xl text-center text-3xl font-medium tracking-[-1px] md:text-5xl lg:text-6xl"
         >
           Less noise, less friction — more{" "}
           <span className="font-serif font-normal italic text-foreground">

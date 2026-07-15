@@ -149,11 +149,15 @@ export function SearchChanged() {
       ref={sectionRef}
       id="how-it-works"
       className="relative scroll-mt-20"
-      // Tall section — gives enough scroll distance for the merge narrative
-      style={{ height: "320vh" }}
+      // Tall section — gives enough scroll distance for the merge narrative.
+      // scroll-snap-type: proximity lets the browser pause near the merge
+      // moment without forcing a hard stop.
+      style={{ height: "320vh", scrollSnapType: "y proximity" }}
     >
-      {/* Sticky viewport — the merge plays out here, pinned while user scrolls */}
-      <div className="sticky top-0 flex h-screen items-center justify-center overflow-hidden">
+      {/* Sticky viewport — the merge plays out here, pinned while user scrolls.
+          scroll-snap-align: start makes this viewport a snap target so the
+          browser pauses here on proximity. */}
+      <div className="sticky top-0 flex h-screen items-center justify-center overflow-hidden" style={{ scrollSnapAlign: "start", scrollSnapStop: "always" }}>
         {/* Icon cluster — relative container for merging icons + dark circle.
             z-0: sits at the back. Heading + question paint above it. */}
         <div className="relative z-0 flex items-center justify-center">
@@ -201,12 +205,12 @@ export function SearchChanged() {
             className="absolute top-28 left-0 right-0 z-10 px-6 text-center md:top-32"
             style={{ opacity: headingOpacity }}
           >
-            <h2 className="mx-auto max-w-5xl text-5xl font-medium tracking-[-2px] md:text-7xl lg:text-8xl">
+            <h2 className="mx-auto max-w-5xl text-6xl font-medium tracking-[-2px] md:text-8xl lg:text-9xl">
               Search has{" "}
               <span className="font-serif font-normal italic">changed.</span>
               <br className="hidden md:block" /> Have you?
             </h2>
-            <p className="mx-auto mt-8 max-w-2xl text-lg text-muted-foreground">
+            <p className="mx-auto mt-10 max-w-2xl text-2xl text-muted-foreground md:text-3xl">
               Three platforms now mediate what the world reads. Watch what
               happens when they converge.
             </p>
@@ -219,12 +223,12 @@ export function SearchChanged() {
             className="absolute bottom-32 left-0 right-0 z-10 px-6 text-center md:bottom-40"
             style={{ opacity: questionOpacity, transform: `translateY(${questionY}px)` }}
           >
-            <p className="mx-auto max-w-2xl text-2xl font-medium tracking-[-0.5px] text-foreground md:text-4xl">
+            <p className="mx-auto max-w-3xl text-4xl font-medium tracking-[-0.5px] text-foreground md:text-6xl lg:text-7xl">
               Where is{" "}
               <span className="font-serif font-normal italic">your voice</span>{" "}
               in this crowd?
             </p>
-            <p className="mt-4 text-sm text-muted-foreground md:text-base">
+            <p className="mt-6 text-lg text-muted-foreground md:text-xl">
               If you don&rsquo;t answer the questions, someone else will.
             </p>
           </div>
