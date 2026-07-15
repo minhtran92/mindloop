@@ -1,11 +1,5 @@
-import { useRef, useMemo } from "react";
-import {
-  motion,
-  useScroll,
-  useTransform,
-  useMotionValueEvent,
-  type MotionValue,
-} from "framer-motion";
+import { useEffect, useRef, useState, useMemo } from "react";
+import { motion } from "framer-motion";
 import { useKeyboardSound } from "@/hooks/useKeyboardSound";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -42,44 +36,26 @@ function generatePhases(): Point[][] {
   for (let i = 0; i < DOT_COUNT; i++) {
     const col = i % 5;
     const row = Math.floor(i / 5);
-    grid.push([
-      -160 + col * 80,
-      -120 + row * 80,
-    ]);
+    grid.push([-160 + col * 80, -120 + row * 80]);
   }
 
-  // Phase 2 — Writer Tools: dots form text-like horizontal lines (4 lines × 5 dots)
-  const text: Point[] = [];
-  for (let i = 0; i < DOT_COUNT; i++) {
-    const line = Math.floor(i / 5);
-    const col = i % 5;
-    text.push([
-      -160 + col * 80,
-      -120 + line * 80,
-    ]);
-  }
-  // (Same positions as grid — the visual difference is that "text" phase
-  //  draws connecting lines between dots on the same row, simulating text.)
+  // Phase 2 — Writer Tools: same grid positions (the visual difference is
+  // conceptual — "text" phase). We keep grid positions.
+  const text: Point[] = grid;
 
   // Phase 3 — Community: dots form a circle, lines connect neighbors
   const circle: Point[] = [];
   for (let i = 0; i < DOT_COUNT; i++) {
     const angle = (i / DOT_COUNT) * Math.PI * 2;
-    circle.push([
-      Math.cos(angle) * 110,
-      Math.sin(angle) * 110,
-    ]);
+    circle.push([Math.cos(angle) * 110, Math.sin(angle) * 110]);
   }
 
-  // Phase 4 — Distribution: dots radiate outward (expanded circle + outer ring)
+  // Phase 4 — Distribution: dots radiate outward (dual-ring)
   const radiate: Point[] = [];
   for (let i = 0; i < DOT_COUNT; i++) {
     const angle = (i / DOT_COUNT) * Math.PI * 2;
     const radius = i % 2 === 0 ? 80 : 150;
-    radiate.push([
-      Math.cos(angle) * radius,
-      Math.sin(angle) * radius,
-    ]);
+    radiate.push([Math.cos(angle) * radius, Math.sin(angle) * radius]);
   }
 
   return [chaos, grid, text, circle, radiate];
@@ -128,6 +104,27 @@ const PHASE_CONTENT = [
 ] as const;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// INTERPOLATION HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Linear interpolation between breakpoints. */
+function lerpMulti(
+  value: number,
+  breakpoints: number[],
+  outputs: number[]
+): number {
+  if (value <= breakpoints[0]) return outputs[0];
+  if (value >= breakpoints[breakpoints.length - 1]) return outputs[outputs.length - 1];
+  for (let i = 0; i < breakpoints.length - 1; i++) {
+    if (value >= breakpoints[i] && value <= breakpoints[i + 1]) {
+      const t = (value - breakpoints[i]) / (breakpoints[i + 1] - breakpoints[i]);
+      return outputs[i] + t * (outputs[i + 1] - outputs[i]);
+    }
+  }
+  return outputs[outputs.length - 1];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // COMPONENTS
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -137,42 +134,37 @@ function MorphDot({
   progress,
 }: {
   index: number;
-  progress: MotionValue<number>;
+  progress: number;
 }) {
   const xs = PHASES.map((p) => p[index][0]);
   const ys = PHASES.map((p) => p[index][1]);
 
-  const cx = useTransform(progress, PHASE_BREAKPOINTS, xs);
-  const cy = useTransform(progress, PHASE_BREAKPOINTS, ys);
+  const cx = lerpMulti(progress, PHASE_BREAKPOINTS, xs);
+  const cy = lerpMulti(progress, PHASE_BREAKPOINTS, ys);
 
-  return <motion.circle cx={cx} cy={cy} r={5} fill="rgba(255,255,255,0.7)" />;
+  return <circle cx={cx} cy={cy} r={5} fill="rgba(255,255,255,0.7)" />;
 }
 
 /** Lines that connect dots — fade in during Community + Distribution phases. */
-function MorphLines({ progress }: { progress: MotionValue<number> }) {
-  // Build edges between consecutive dots on the circle (phase 3) and
-  // radiating edges (phase 4). We render lines between dot i and dot i+1
-  // (and a few cross-links) whose opacity tracks scroll.
-  const lineOpacity = useTransform(progress, [0.5, 0.6, 0.8, 0.9], [0, 0.4, 0.4, 0.25]);
+function MorphLines({ progress }: { progress: number }) {
+  const lineOpacity = lerpMulti(progress, [0.5, 0.6, 0.8, 0.9], [0, 0.4, 0.4, 0.25]);
 
   const edges = useMemo(() => {
     const e: [number, number][] = [];
-    // Consecutive (circle edges)
     for (let i = 0; i < DOT_COUNT; i++) {
       e.push([i, (i + 1) % DOT_COUNT]);
     }
-    // A few cross-links
     e.push([0, 5], [5, 10], [10, 15], [15, 0]);
     e.push([2, 7], [7, 12], [12, 17]);
     return e;
   }, []);
 
   return (
-    <motion.g style={{ opacity: lineOpacity }}>
+    <g style={{ opacity: lineOpacity }}>
       {edges.map(([a, b], i) => (
         <MorphLine key={i} a={a} b={b} progress={progress} />
       ))}
-    </motion.g>
+    </g>
   );
 }
 
@@ -183,14 +175,14 @@ function MorphLine({
 }: {
   a: number;
   b: number;
-  progress: MotionValue<number>;
+  progress: number;
 }) {
-  const x1 = useTransform(progress, PHASE_BREAKPOINTS, PHASES.map((p) => p[a][0]));
-  const y1 = useTransform(progress, PHASE_BREAKPOINTS, PHASES.map((p) => p[a][1]));
-  const x2 = useTransform(progress, PHASE_BREAKPOINTS, PHASES.map((p) => p[b][0]));
-  const y2 = useTransform(progress, PHASE_BREAKPOINTS, PHASES.map((p) => p[b][1]));
+  const x1 = lerpMulti(progress, PHASE_BREAKPOINTS, PHASES.map((p) => p[a][0]));
+  const y1 = lerpMulti(progress, PHASE_BREAKPOINTS, PHASES.map((p) => p[a][1]));
+  const x2 = lerpMulti(progress, PHASE_BREAKPOINTS, PHASES.map((p) => p[b][0]));
+  const y2 = lerpMulti(progress, PHASE_BREAKPOINTS, PHASES.map((p) => p[b][1]));
 
-  return <motion.line x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(255,255,255,0.3)" strokeWidth={1} />;
+  return <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(255,255,255,0.3)" strokeWidth={1} />;
 }
 
 /** Feature text panel — shows the content for the current phase. */
@@ -199,19 +191,16 @@ function FeaturePanel({
   progress,
 }: {
   phaseIndex: number;
-  progress: MotionValue<number>;
+  progress: number;
 }) {
-  // Each phase's text is visible during its scroll slice.
   const start = PHASE_BREAKPOINTS[phaseIndex];
   const end = PHASE_BREAKPOINTS[phaseIndex + 1];
   const mid = (start + end) / 2;
 
-  const opacity = useTransform(
-    progress,
-    [start + 0.02, mid, end - 0.02],
-    [0, 1, 0]
-  );
-  const y = useTransform(progress, [start, mid, end], [30, 0, -30]);
+  const opacity = lerpMulti(progress, [start + 0.02, mid, end - 0.02], [0, 1, 0]);
+  const y = lerpMulti(progress, [start, mid, end], [30, 0, -30]);
+
+  if (opacity < 0.01) return null;
 
   const content = PHASE_CONTENT[phaseIndex];
 
@@ -239,25 +228,64 @@ function FeaturePanel({
 
 export function Solution() {
   const sectionRef = useRef<HTMLElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: sectionRef,
-    offset: ["start start", "end end"],
-  });
-
+  const [progress, setProgress] = useState(0);
   const playKey = useKeyboardSound();
   const wasWriterPhase = useRef(false);
 
+  // Native scroll listener + useState for progress (more reliable than
+  // framer-motion's useScroll/useTransform with Lenis + sticky sections).
+  useEffect(() => {
+    let rafId: number | null = null;
+
+    function recompute() {
+      const el = sectionRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const absTop = rect.top + window.scrollY;
+      const scrollHeight = Math.max(0, rect.height - window.innerHeight);
+      if (scrollHeight <= 0) {
+        setProgress(0);
+        return;
+      }
+      setProgress(Math.max(0, Math.min(1, (window.scrollY - absTop) / scrollHeight)));
+    }
+
+    function onScroll() {
+      if (rafId != null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        recompute();
+      });
+    }
+
+    recompute();
+    const t1 = setTimeout(recompute, 200);
+    const t2 = setTimeout(recompute, 1000);
+    window.addEventListener("scroll", onScroll, { passive: true, capture: true });
+    window.addEventListener("lenis", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", onScroll, { capture: true } as AddEventListenerOptions);
+      window.removeEventListener("lenis", onScroll);
+      window.removeEventListener("resize", onScroll);
+      clearTimeout(t1);
+      clearTimeout(t2);
+      if (rafId != null) cancelAnimationFrame(rafId);
+    };
+  }, []);
+
   // Play a keyboard tick when entering the Writer Tools phase (phase index 2).
-  // Phase 2 spans scrollYProgress [0.42, 0.64]; we trigger at ~0.48.
-  useMotionValueEvent(scrollYProgress, "change", (v) => {
-    const inWriter = v > 0.46 && v < 0.6;
+  // Phase 2 spans progress [0.42, 0.64]; we trigger at ~0.48.
+  useEffect(() => {
+    const inWriter = progress > 0.46 && progress < 0.6;
     if (inWriter && !wasWriterPhase.current) {
       wasWriterPhase.current = true;
       playKey();
     } else if (!inWriter) {
       wasWriterPhase.current = false;
     }
-  });
+  }, [progress, playKey]);
 
   return (
     <section
@@ -276,9 +304,9 @@ export function Solution() {
               className="h-[280px] w-full max-w-md md:h-[400px]"
               aria-hidden="true"
             >
-              <MorphLines progress={scrollYProgress} />
+              <MorphLines progress={progress} />
               {Array.from({ length: DOT_COUNT }).map((_, i) => (
-                <MorphDot key={i} index={i} progress={scrollYProgress} />
+                <MorphDot key={i} index={i} progress={progress} />
               ))}
             </svg>
           </div>
@@ -286,7 +314,7 @@ export function Solution() {
           {/* RIGHT — feature text, changes per phase */}
           <div className="relative h-[280px] md:h-[400px]">
             {PHASE_CONTENT.map((_, i) => (
-              <FeaturePanel key={i} phaseIndex={i} progress={scrollYProgress} />
+              <FeaturePanel key={i} phaseIndex={i} progress={progress} />
             ))}
           </div>
         </div>
